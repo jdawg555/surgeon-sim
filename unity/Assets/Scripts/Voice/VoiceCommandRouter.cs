@@ -10,9 +10,9 @@ using UnityEngine.Windows.Speech;
 
 namespace Dragonfly.XR.Voice
 {
-    // Voice routing for the demo. On Quest, prefer Meta Voice SDK / Wit.ai
-    // (set #define DRAGONFLY_USE_META_VOICE in Player Settings); on the
-    // Windows editor, fall back to KeywordRecognizer for fast iteration.
+    // Voice routing for the demo. On Quest, drive Dispatch(string) from a
+    // Meta Voice SDK AppVoiceExperience callback; on the Windows editor the
+    // built-in KeywordRecognizer fallback runs automatically.
     //
     // Surgeon-facing grammar is intentionally narrow and unambiguous:
     //   "show <level>"        → highlight a spine level (e.g. "show L5 S1")
@@ -68,7 +68,9 @@ namespace Dragonfly.XR.Voice
         }
 #endif
 
-        // Public so a Meta Voice SDK callback or unit test can drive the router.
+        // Public so a Meta Voice SDK AppVoiceExperience callback or unit test
+        // can drive the router. Wire OnFullTranscription / OnPartialResponse
+        // (UnityEvent<string>) in the inspector → this method.
         public void Dispatch(string phrase)
         {
             phrase = (phrase ?? "").Trim().ToLowerInvariant();
