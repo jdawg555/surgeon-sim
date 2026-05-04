@@ -19,13 +19,16 @@ SDK, and a spine reference mesh imported before it runs on a Quest.
 
 ## Stack
 
-- **Unity 2022 LTS** with the **XR Interaction Toolkit**
-- **Meta XR Core SDK** for passthrough + controller pose tracking
+- **Unity 6 LTS (6000.0)** with the **XR Interaction Toolkit 3.x** + **OpenXR**
+- **Meta XR All-in-One SDK v77** (UPM scoped registry, not the deprecated
+  Asset Store package) for passthrough, anchors, hands, controllers
+- **Meta Voice SDK** (Wit.ai backend) for on-device voice + intent
 - **TextMeshPro** for HUD text
-- Optional: **Meta Voice SDK / Wit.ai** for on-device voice. The bundled
-  `VoiceCommandRouter` falls back to `KeywordRecognizer` on the Windows
-  editor for fast iteration.
 - Optional: **Spout / NDI** plugin for capturing the stream camera into OBS.
+
+Pinned versions live in [`unity/Packages/manifest.json`](unity/Packages/manifest.json).
+Setup walkthrough: [`docs/QUEST_SETUP.md`](docs/QUEST_SETUP.md).
+Curated open-source stack (anatomy models, references): [`docs/OPEN_SOURCE_STACK.md`](docs/OPEN_SOURCE_STACK.md).
 
 ## Repo layout
 
@@ -72,12 +75,17 @@ a port, depending on demo scope.
 
 ## Getting it running
 
-1. Clone and open `unity/` as a new Unity 2022 LTS project.
-2. Install the Meta XR Core SDK (Asset Store) and TextMeshPro Essentials.
-3. Run **Tools > Dragonfly > Run Fit Engine Smoke Test** in the editor.
-   Console should print top-3 implants for every spine level.
-4. Build to Quest 3, point at a mannequin, pull the right trigger twice
-   (caudal then cranial) to anchor the spine model.
+See [`docs/QUEST_SETUP.md`](docs/QUEST_SETUP.md) for the full walkthrough.
+Short version:
+
+1. Clone, open `unity/` in **Unity 6 LTS**. UPM auto-resolves Meta XR v77
+   from the scoped registry pinned in `Packages/manifest.json`.
+2. Switch platform to Android, set the device to Quest 3, hit **Build &
+   Run** with the headset attached over USB-C.
+3. Run **Tools > Dragonfly > Run Fit Engine Smoke Test** to confirm the
+   deterministic core works without the headset.
+4. In the headset, point the right controller at the mannequin and pull
+   the trigger twice (caudal then cranial) to anchor the spine model.
 
 To exercise the Python core directly:
 
