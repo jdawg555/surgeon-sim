@@ -48,3 +48,23 @@ crashlytics-build.properties
 __pycache__/
 *.pyc
 .venv/
+
+# Secrets — never commit. Belt-and-suspenders against streaming accidents.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.cred
+*.token
+secrets/
+service-account*.json
+*adminsdk*.json
+.wit-token
+.wit-token.txt
+
+# Patient data — never commit. Mannequin demos only.
+research/processed/*
+!research/processed/.gitkeep
+*.dcm
+*.nrrd
