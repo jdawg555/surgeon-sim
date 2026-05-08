@@ -5,11 +5,16 @@ question, the realistic options, the rough effort, and a recommendation,
 so we can commit a focused session to the right path instead of
 discovering scope mid-implementation.
 
-| doc | question |
-|---|---|
-| [TOTALSEGMENTATOR.md](TOTALSEGMENTATOR.md) | Should TotalSegmentator be the second volume source for `python/case_pipeline`, and how do we handle the disc-segmentation gap? |
-| [SOFA.md](SOFA.md) | Is SOFA the right physics layer for surgeon-sim, and how do we bridge it to Quest 3? |
+| doc | question | decision |
+|---|---|---|
+| [TOTALSEGMENTATOR.md](TOTALSEGMENTATOR.md) | TotalSegmentator as a second volume source for `python/case_pipeline`, and how to handle the disc-segmentation gap? | **Option 1** (CT + geometric disc synthesis). Decided 2026-05-08. ~2.5 days of focused work to land a PR. |
+| [SOFA.md](SOFA.md) | SOFA for tissue + bone physics on Quest 3? | **Defer** — Unity-native physics polish wins for now. Decided 2026-05-08. |
+| [UNITY_PHYSICS_POLISH.md](UNITY_PHYSICS_POLISH.md) | What we're doing instead of SOFA. | Active plan. Voxel bone drilling → Obi softbody retraction → particle blood. |
 
-These are not commitments. Each doc ends with a "decision needed"
-section — once those are answered, the doc stays as a record, and the
-implementation goes in its own PR.
+These are not commitments — they are records of decisions. Each doc
+ends with a "decision" section quoting the choice and the rationale,
+so future-us (or a teammate, or a stream viewer) can see *why* we
+picked a path.
+
+When a decision changes, open a new PR that updates the doc; do not
+rewrite history.

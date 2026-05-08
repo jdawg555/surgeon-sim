@@ -1,7 +1,9 @@
 # TotalSegmentator integration plan
 
-**Status:** decision doc, not a commitment.
-**Question:** is TotalSegmentator the right second volume source for `python/case_pipeline`?
+**Status:** decided 2026-05-08.
+**Decision:** **Option 1 (CT + geometric disc synthesis).** Greenlit for the next implementation session, ~2.5 days of focused work.
+**Rationale:** at the bottom of this doc.
+**Question (resolved):** is TotalSegmentator the right second volume source for `python/case_pipeline`?
 
 ## What it is
 
@@ -20,12 +22,12 @@ real cord curvature. Running TotalSegmentator over a synthetic CT (or
 later, a public anonymised CT) gives us exactly that, and reuses the
 same downstream meshing + glTF stages we just built.
 
-## The disc gap
+## The disc gap (CT path)
 
-TotalSegmentator's `total` task segments **117 structures** including
-`vertebrae_L1`..`vertebrae_S1` and `spinal_cord`. It **does not segment
-intervertebral discs**, dura, or paraspinals individually. For our
-case_pipeline we need:
+TotalSegmentator's `total` task (CT) segments **117 structures**
+including `vertebrae_L1`..`vertebrae_S1` and `spinal_cord`. It **does
+not segment intervertebral discs**, dura, or paraspinals individually
+on CT. For our case_pipeline we need:
 
 | our label | TotalSegmentator class | gap |
 |---|---|---|
@@ -55,6 +57,25 @@ The disc gap is the actual blocker. Three options:
 **Recommendation: option 1.** Geometric synthesis off real vertebra
 masks gets us 80% of the realism for 5% of the effort, and we can
 upgrade to option 2 later without changing the case_pipeline interface.
+
+### Pivot path if we want real disc fidelity later
+
+The MRI ecosystem has filled this gap since the original draft of this
+doc. Two alternatives exist if we ever want disc segmentation that
+isn't synthetic:
+
+- **TotalSegmentator's `total_mr` task** — TotalSegmentator's MRI
+  variant *does* segment intervertebral discs. Requires synthesizing
+  an MRI volume, which is non-trivial because tissue contrast is
+  sequence-dependent and much harder to fake than CT HU values.
+- **TotalSpineSeg** (neuropoly, 2024) — a separate nnUNet-based tool
+  purpose-built for spine MRI: vertebrae + discs + cord + canal in one
+  shot. Strongest fidelity but adds a second model to maintain.
+
+Neither is on the path right now. The CT path with geometric discs is
+the simpler, faster, more controllable starting point, and the
+case_pipeline interface keeps the door open to switching sources
+later without reworking the meshing or export stages.
 
 ## Hardware on the M5 Max
 
@@ -112,9 +133,27 @@ call the right pre-stage. Meshing + export stay unchanged.
   = repo stays small. Suggest: ship the spec + manifest, regenerate the
   segmentation in CI nightly.
 
-## Decision needed
+## Decision (2026-05-08)
 
-Greenlight on option 1 (geometric disc synthesis) before the next
-TotalSegmentator session. If the answer is "no, we want real disc
-segmentation" then this becomes a multi-week project and we should
-reset scope.
+**Option 1: CT + TotalSegmentator (`total` task) + geometric disc
+synthesis.** Reasons:
+
+1. **CT synthesis is tractable.** The existing `phantom.py` already
+   produces a labelled volume; converting labels to plausible HU
+   values (bone +600, soft tissue +40, fat -100, air -1000, plus
+   noise) is a hundred lines.
+2. **MRI synthesis is not.** Sequence-dependent contrast, motion,
+   chemical-shift artefacts — the synthetic MRI would be a project of
+   its own and would still be a poor input to `total_mr` because the
+   contrast wouldn't match its training distribution.
+3. **Disc fidelity is not the bottleneck.** Pedicle-screw planning and
+   construct visualisation are the demos. Discs need to look correct
+   between vertebrae; they don't need to match a particular patient.
+   Geometric synthesis does that job.
+4. **The interface is forward-compatible.** Switching to `total_mr` or
+   TotalSpineSeg later only requires swapping the segmenter module;
+   meshing, manifest, and Unity-side loader don't change.
+
+Next session deliverables (per the "Estimated effort to land a usable
+PR" section above): synthetic CT, TotalSegmentator wrapper, label
+remap, geometric disc synthesis, smoke test.

@@ -1,8 +1,10 @@
 # SOFA integration plan
 
-**Status:** decision doc, not a commitment.
-**Question:** should we use SOFA for tissue + bone physics in
-surgeon-sim, and if so, how do we bridge it to Unity on Quest 3?
+**Status:** decided 2026-05-08.
+**Decision:** **Defer SOFA.** Invest the same effort into Unity-native physics polish (Obi Softbody for retraction, custom C# voxel-bone drilling, particle blood). Revisit SOFA when (a) a tethered-PC mode is in scope and (b) Unity-native limits are visible to actual users.
+**Replacement plan:** [`UNITY_PHYSICS_POLISH.md`](UNITY_PHYSICS_POLISH.md) (next-physics direction).
+**Rationale:** at the bottom of this doc.
+**Question (resolved):** should we use SOFA for tissue + bone physics in surgeon-sim, and if so, how do we bridge it to Unity on Quest 3?
 
 ## What it is
 
@@ -108,19 +110,40 @@ SOFA PR is:
 Once that exists we know the bridge architecture is sound and can
 plan the Unity integration properly.
 
-## Decision needed
+## Decision (2026-05-08): defer
 
-Two questions before committing a session:
+**SOFA is deferred. Replacement plan:
+[`UNITY_PHYSICS_POLISH.md`](UNITY_PHYSICS_POLISH.md).** Reasons:
 
-1. **Does the project commit to a tethered-PC mode for high-fidelity
-   interactions?** (Option A/C) If we strictly require standalone
-   Quest, SOFA's value drops considerably and we might be better
-   served by a custom voxel-bone-drilling implementation in C#.
-2. **What's the minimum-viable interaction we want SOFA to handle?**
-   Drilling? Retraction? Cutting? The answer drives which SOFA
-   scene templates we start from.
+1. **No tethered PC exists today.** The dev box is the M5 Max, demos
+   are streamed from a standalone Quest 3. Without a PC in the loop,
+   SOFA can't run at the rate the headset needs. Committing to
+   tethered-PC mode now means committing to a future hardware setup
+   the project doesn't yet have.
+2. **2-3 weeks is too much for a pre-validation investment.** The
+   value of SOFA is "interactive cutting and tearing fidelity," which
+   the surgeons in the audience may or may not care about for a
+   stream-demo sim. Spending weeks on a bridge before any user has
+   said "Unity-native physics isn't enough" is premature optimization.
+3. **Unity-native physics gets us 80% of the visible value.** Obi
+   Softbody (mature Unity asset) for retraction, a custom C# voxel
+   approach for bone drilling, and particle-based blood ship on Quest
+   standalone with no bridge, no second process, no PC.
+4. **The decision is reversible.** If user feedback later says "the
+   physics looks weak," we can revisit SOFA *then*, after the PC is in
+   the loop and after we know specifically which interactions are
+   underwhelming. Nothing about the current architecture forecloses
+   that.
 
-A sensible alternative until those decisions land: invest the same
-effort into Unity-native physics polish + Obi Softbody for visible
-deformation, defer SOFA until the project has decided whether
-tethered-PC is acceptable.
+When to revisit:
+
+- A tethered PC is part of the dev/demo setup.
+- Unity-native physics has been pushed to its limit and a specific
+  interaction (cutting flavum, tearing dura, dynamic bone fracture)
+  is identified as visibly inadequate.
+- Or: the project pivots from "stream demo" to "training credentialing
+  platform," in which case fidelity requirements shift dramatically
+  and SOFA becomes table stakes, not a nice-to-have.
+
+Until then, this doc stays as a record of the analysis. Re-open by
+opening a new PR that references it.
