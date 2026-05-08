@@ -12,13 +12,22 @@ python/
 │   ├── implant_predictor.py   plan generation. Used for fusion procedures.
 │   ├── plan_generator.py
 │   └── tray_optimizer.py
-└── spineoptimizer/            Total disc replacement (TDR) fit engine.
-    ├── core/
-    │   ├── models.py          SpineLevel / ImplantSpec / DiscSpaceMeasurement
-    │   ├── catalog.py         22-SKU lumbar + cervical TDR catalog
-    │   └── implant_loader.py  STEP / STL → bounding box + metadata
-    └── fitting/
-        └── fit_engine.py      Deterministic ranker (0.40 / 0.35 / 0.25 weights)
+├── spineoptimizer/            Total disc replacement (TDR) fit engine.
+│   ├── core/
+│   │   ├── models.py          SpineLevel / ImplantSpec / DiscSpaceMeasurement
+│   │   ├── catalog.py         22-SKU lumbar + cervical TDR catalog
+│   │   └── implant_loader.py  STEP / STL → bounding box + metadata
+│   └── fitting/
+│       └── fit_engine.py      Deterministic ranker (0.40 / 0.35 / 0.25 weights)
+└── case_pipeline/             Case authoring: spec JSON → labelled volume → glTF + manifest.
+    ├── models.py              CaseSpec / PhantomSpec / CaseManifest
+    ├── phantom.py             Parametric synthetic volume (lumbar + soft tissue)
+    ├── meshing.py             Marching cubes per label, decimate, smooth
+    ├── export.py              Per-structure .glb + manifest.json writer
+    ├── pipeline.py            Orchestration entry: build_case(spec, out_dir)
+    ├── cli.py                 `python -m case_pipeline.cli <spec> <out_dir>`
+    ├── smoke_test.py          End-to-end + determinism check
+    └── specs/                 Example case specs (literature_default.json)
 ```
 
 ## Why two trees
@@ -45,5 +54,7 @@ side stays in sync.
 ## Dependencies
 
 Catalog and fit engine: `numpy` only. Plan generator: `reportlab` for PDF
-output. Implant predictor and tray optimizer: stdlib. See each file's
+output. Implant predictor and tray optimizer: stdlib. Case pipeline:
+`numpy`, `scikit-image`, `trimesh`, `fast-simplification` (see
+[`case_pipeline/README.md`](case_pipeline/README.md)). See each file's
 imports for specifics.
