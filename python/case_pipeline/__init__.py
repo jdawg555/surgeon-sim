@@ -17,6 +17,7 @@ Public surface kept intentionally small.
 from case_pipeline.models import (
     CaseManifest,
     CaseSpec,
+    Pathology,
     PhantomSpec,
     StructureManifest,
 )
@@ -25,6 +26,7 @@ from case_pipeline.pipeline import build_case
 __all__ = [
     "CaseManifest",
     "CaseSpec",
+    "Pathology",
     "PhantomSpec",
     "StructureManifest",
     "build_case",
