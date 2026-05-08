@@ -41,7 +41,8 @@ surgeon-sim/
 │   └── VOICE_COMMANDS.md     Surgeon-facing grammar
 ├── python/                   Reference implementation (canonical)
 │   ├── core/                 Pedicle screw + rod prediction, tray + plan
-│   └── spineoptimizer/       TDR fit engine (mirrored to C#)
+│   ├── spineoptimizer/       TDR fit engine (mirrored to C#)
+│   └── case_pipeline/        Case authoring: spec JSON -> labelled volume -> glTF + manifest
 ├── unity/Assets/
 │   ├── Scripts/
 │   │   ├── Domain/           SpineLevel, ImplantSpec, DiscSpaceMeasurement, FitScore
@@ -79,6 +80,27 @@ The fusion-side Domain types live in `Domain/VertebraLevel.cs`,
 `Domain/TrayConfiguration.cs`. Run the editor smoke test at
 **Tools > Dragonfly > Run Fusion Predictor Smoke Test** to exercise the
 fusion port without launching XR.
+
+## Case authoring
+
+Patient cases are built from JSON specs, not hand-authored. The
+`python/case_pipeline/` package turns a `CaseSpec` into a labelled CT-like
+volume, runs marching cubes per anatomical structure, decimates, smooths,
+and emits one glTF per structure plus a `manifest.json`. Unity loads the
+output via Addressables.
+
+```
+cd python
+python -m case_pipeline.cli case_pipeline/specs/literature_default.json out/cases/lit_default
+python -m case_pipeline.smoke_test  # end-to-end + determinism check
+```
+
+This PR ships the parametric phantom volume source. A later PR will add a
+`segmented_ct` source backed by TotalSegmentator over a synthetic CT; the
+downstream meshing + manifest stages don't change.
+
+See [`python/case_pipeline/README.md`](python/case_pipeline/README.md) for
+the pipeline diagram and dependency list.
 
 ## Getting it running
 
