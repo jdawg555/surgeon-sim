@@ -23,14 +23,19 @@ from case_pipeline.models import CaseSpec, PhantomSpec, Pathology
 from case_pipeline.pipeline import build_case
 
 
-EXPECTED_STRUCTURES = {
+SOFT_TISSUE_STRUCTURES = {
     "skin",
     "soft_tissue",
-    "vertebral_body",
     "disc",
     "dura",
     "spinal_cord",
 }
+
+
+def _expected_structures(spec: CaseSpec) -> set[str]:
+    """Per-level vertebrae plus the soft-tissue set. Matches the manifest
+    that `build_case` should produce for `spec`."""
+    return SOFT_TISSUE_STRUCTURES | {f"vertebra_{lvl}" for lvl in spec.phantom.levels}
 
 
 def _build(spec: CaseSpec, tmp: str) -> dict[str, int]:
@@ -39,7 +44,8 @@ def _build(spec: CaseSpec, tmp: str) -> dict[str, int]:
     manifest = build_case(spec, out)
 
     produced = {s.name for s in manifest.structures}
-    missing = EXPECTED_STRUCTURES - produced
+    expected = _expected_structures(spec)
+    missing = expected - produced
     if missing:
         raise AssertionError(
             f"{spec.case_id}: missing structures: {sorted(missing)}"
@@ -121,24 +127,26 @@ def main() -> int:
 
             # Pathology must change *something* about the bone meshes vs
             # baseline. If a future refactor accidentally drops pathology
-            # plumbing this catches it.
-            baseline_bone = counts["smoke-default-lumbar"]["vertebral_body"]
+            # plumbing this catches it. With per-vertebra meshes the bone
+            # signal is the sum across all vertebra_* structures plus disc.
+            def _bone_disc_signature(c: dict[str, int]) -> tuple[int, int]:
+                bone = sum(t for n, t in c.items() if n.startswith("vertebra_"))
+                disc = c.get("disc", 0)
+                return bone, disc
+
+            baseline_sig = _bone_disc_signature(counts["smoke-default-lumbar"])
             for cid in (
                 "smoke-degen-l4-l5",
                 "smoke-spondy-l5-s1",
                 "smoke-scoliosis-l3",
             ):
-                if counts[cid]["vertebral_body"] == baseline_bone:
-                    # Triangle count alone could match by coincidence
-                    # post-decimation; check disc count too. If both match,
-                    # pathology is silently no-op.
-                    if counts[cid]["disc"] == counts["smoke-default-lumbar"]["disc"]:
-                        print(
-                            f"FAIL: {cid} bone+disc tri counts match baseline; "
-                            f"pathology may be no-op",
-                            file=sys.stderr,
-                        )
-                        return 1
+                if _bone_disc_signature(counts[cid]) == baseline_sig:
+                    print(
+                        f"FAIL: {cid} bone+disc tri totals match baseline; "
+                        f"pathology may be no-op",
+                        file=sys.stderr,
+                    )
+                    return 1
 
             print("OK: determinism + pathology divergence checks passed")
             return 0

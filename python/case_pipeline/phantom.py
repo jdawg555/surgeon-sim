@@ -30,39 +30,75 @@ from dataclasses import dataclass
 import numpy as np
 
 from case_pipeline.models import (
+    LUMBAR_LEVELS,
     Pathology,
     PhantomSpec,
     _disc_pair_keys,
 )
 
 
+# Label IDs. Per-level vertebrae get IDs 10..15 so each can be meshed
+# independently and the surgeon can select an individual vertebra in
+# Unity for screw planning. Soft-tissue labels keep low IDs so the bone
+# block has room to grow (thoracic/cervical levels would extend upward).
 LABEL_AIR = 0
 LABEL_SKIN = 1
 LABEL_SOFT_TISSUE = 2
-LABEL_VERTEBRAL_BODY = 3
 LABEL_DISC = 4
 LABEL_DURA = 5
 LABEL_CORD = 6
 
+VERTEBRA_LABEL_BASE = 10
+
+
+def vertebra_label(level: str) -> int:
+    """Map a level name (e.g. 'L4', 'S1') to its uint8 label ID.
+
+    The ordering follows `LUMBAR_LEVELS` so labels stay contiguous and
+    deterministic across runs.
+    """
+    if level not in LUMBAR_LEVELS:
+        raise ValueError(
+            f"unknown level {level!r}; expected one of {LUMBAR_LEVELS}"
+        )
+    return VERTEBRA_LABEL_BASE + LUMBAR_LEVELS.index(level)
+
+
+def vertebra_structure_name(level: str) -> str:
+    """Per-level mesh name. The Unity loader treats each as its own
+    GameObject so the surgeon can highlight/select individual vertebrae."""
+    return f"vertebra_{level}"
+
+
 LABEL_NAMES: dict[int, str] = {
     LABEL_SKIN: "skin",
     LABEL_SOFT_TISSUE: "soft_tissue",
-    LABEL_VERTEBRAL_BODY: "vertebral_body",
     LABEL_DISC: "disc",
     LABEL_DURA: "dura",
     LABEL_CORD: "spinal_cord",
 }
+for _lvl in LUMBAR_LEVELS:
+    LABEL_NAMES[vertebra_label(_lvl)] = vertebra_structure_name(_lvl)
 
 # Material hint passed through to the manifest so the Unity side can pick
-# the right shader/material variant at load time.
+# the right shader/material variant at load time. All vertebrae share
+# the same `bone` hint so Unity can apply one bone material; the per-level
+# split is only about selectability, not appearance.
 MATERIAL_HINTS: dict[int, str] = {
     LABEL_SKIN: "skin",
     LABEL_SOFT_TISSUE: "soft_tissue",
-    LABEL_VERTEBRAL_BODY: "bone",
     LABEL_DISC: "disc",
     LABEL_DURA: "soft_tissue",
     LABEL_CORD: "cord",
 }
+for _lvl in LUMBAR_LEVELS:
+    MATERIAL_HINTS[vertebra_label(_lvl)] = "bone"
+
+# Set of all bone label IDs for code paths that need "any vertebra".
+# (e.g. cortical-shell logic in ct_synthesis, bone-vs-disc precedence.)
+VERTEBRA_LABELS: frozenset[int] = frozenset(
+    vertebra_label(lvl) for lvl in LUMBAR_LEVELS
+)
 
 # Floor on degenerated disc height — full collapse would zero out a label
 # segment and confuse marching cubes. 1 mm keeps the disc renderable and
@@ -270,14 +306,15 @@ def generate(spec: PhantomSpec) -> PhantomVolume:
     body_radius = spec.body_radius_mm
     disc_radius = body_radius * 0.95
 
-    # Bodies
+    # Bodies — each vertebra gets its own label so it meshes as its own
+    # selectable structure on the Unity side.
     for p in placements:
         in_z = (Z >= p.body_z_lo) & (Z < p.body_z_hi)
         radial = (
             (X - scoliosis_offset) ** 2
             + (Y - sag_offset - p.y_offset_mm) ** 2
         ) ** 0.5
-        voxels[in_z & (radial <= body_radius)] = LABEL_VERTEBRAL_BODY
+        voxels[in_z & (radial <= body_radius)] = vertebra_label(p.level)
 
     # Discs (after bodies so a body never overwrites a disc, but degenerated
     # discs that sit inside body z-range are already prevented by
