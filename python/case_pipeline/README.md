@@ -52,6 +52,30 @@ A later PR will add a `segmented_ct` source that runs TotalSegmentator
 over a synthetic CT and feeds its labels into the same downstream stages.
 The output layout doesn't change.
 
+## Pathology
+
+The phantom anatomy is healthy by default. Set
+`spec.phantom.pathology` to layer in clinically realistic perturbations:
+
+| field | type | effect |
+|---|---|---|
+| `degenerative_disc` | `{level_pair: severity 0..1}` | Reduces disc height. Severity 1.0 collapses the disc to ~15% of normal height (floored at 1 mm). |
+| `spondylolisthesis` | `{level_pair: anterior_mm}` | Translates the upper vertebra of the pair, and every level above it, anteriorly by `anterior_mm`. The lower vertebra anchors. |
+| `scoliosis_cobb_deg` + `scoliosis_apex_level` | `float`, `str` | Smooth lateral curvature peaking at the named vertebra. Sign of `cobb_deg` picks left/right convexity. |
+
+Pathologies stack: a degenerative L5-S1 disc plus an L5-S1 slip plus a
+right-convex curve apexing at L3 is one valid `Pathology` value. See the
+example specs in `specs/`:
+
+- `degen_l4_l5.json` — moderate L4-L5 disc disease, mild L5-S1
+- `spondy_l5_s1.json` — Grade 1 isthmic spondylolisthesis at L5-S1
+- `scoliosis_l3_apex.json` — 25° right-convex Cobb apexing at L3
+
+What pathology does *not* cover yet: osteophytes, facet hypertrophy,
+canal stenosis, foraminal narrowing, vertebral fractures, tumour,
+infection. Those are extensions to phantom.py once the loader is
+rendering what we have.
+
 ## Dependencies
 
 `numpy`, `scikit-image` (marching cubes), `trimesh` (cleanup + glTF

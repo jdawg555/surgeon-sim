@@ -8,7 +8,13 @@ plug into the same downstream stages.
 
 Coordinate system (matches Unity / RAS-ish):
   +X right, +Y anterior, +Z superior. Origin at the inferior endplate of
-  the most-inferior level in `spec.levels`.
+  the most-inferior level in `spec.levels`. The volume is built so the
+  inferior level (e.g. S1) sits near z=0 and the superior level (e.g. L1)
+  sits near z=column_height_mm.
+
+Pathologies (degenerative disc, spondylolisthesis, scoliosis) are layered
+in `_apply_pathology_offsets` before the level placement loop, so the
+loop itself stays simple.
 
 Labels:
   0 air, 1 skin, 2 soft_tissue (paraspinals + abdomen),
@@ -23,7 +29,11 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from case_pipeline.models import PhantomSpec
+from case_pipeline.models import (
+    Pathology,
+    PhantomSpec,
+    _disc_pair_keys,
+)
 
 
 LABEL_AIR = 0
@@ -54,6 +64,14 @@ MATERIAL_HINTS: dict[int, str] = {
     LABEL_CORD: "cord",
 }
 
+# Floor on degenerated disc height — full collapse would zero out a label
+# segment and confuse marching cubes. 1 mm keeps the disc renderable and
+# is below clinical "severe" thresholds anyway.
+_DEGEN_DISC_FLOOR_MM = 1.0
+# Severity 1.0 reduces disc height by this fraction. Picked so severity
+# 0.5 ~= moderate degeneration, 1.0 ~= advanced, neither is fully zero.
+_DEGEN_DISC_MAX_REDUCTION = 0.85
+
 
 @dataclass(frozen=True)
 class PhantomVolume:
@@ -64,20 +82,122 @@ class PhantomVolume:
     spacing_mm: float
 
 
+@dataclass(frozen=True)
+class _LevelPlacement:
+    """Where one vertebra sits in the volume after pathology offsets."""
+
+    level: str
+    body_z_lo: float
+    body_z_hi: float
+    y_offset_mm: float  # anterior translation (spondylolisthesis)
+
+
+@dataclass(frozen=True)
+class _DiscPlacement:
+    pair: str  # e.g. 'L4-L5'
+    z_lo: float
+    z_hi: float
+    y_offset_mm: float  # tracks the upper vertebra's slip
+
+
+def _resolve_offsets(
+    spec: PhantomSpec,
+) -> tuple[list[_LevelPlacement], list[_DiscPlacement], float]:
+    """Compute Z extents and Y offsets per level/disc, accounting for
+    degenerative disc collapse and spondylolisthesis.
+
+    Levels in `spec.levels` are convention superior-to-inferior. We place
+    the inferior end (e.g. S1) at z=0 and stack upward, so the loop in
+    `generate` doesn't have to think about the inversion.
+    """
+
+    patho: Pathology = spec.pathology
+    levels = spec.levels  # superior -> inferior in name order
+    pairs = _disc_pair_keys(levels)
+
+    # Per-level Y offset from spondylolisthesis. A slip at pair
+    # (above, below) translates `above` and all levels superior to it.
+    # `below` and everything inferior stays put (S1/sacrum is the anchor).
+    y_offset_per_level: dict[str, float] = {lvl: 0.0 for lvl in levels}
+    for pair, slip_mm in patho.spondylolisthesis.items():
+        above, _below = pair.split("-")
+        above_idx = levels.index(above)
+        for k in range(above_idx + 1):  # 0..above_idx inclusive (more superior)
+            y_offset_per_level[levels[k]] += slip_mm
+
+    # Per-disc-pair height with degeneration applied.
+    disc_height_per_pair: dict[str, float] = {}
+    for pair in pairs:
+        sev = patho.degenerative_disc.get(pair, 0.0)
+        h = spec.disc_height_mm * (1.0 - sev * _DEGEN_DISC_MAX_REDUCTION)
+        disc_height_per_pair[pair] = max(_DEGEN_DISC_FLOOR_MM, h)
+
+    # Walk inferior -> superior placing bodies and discs.
+    placements: list[_LevelPlacement] = []
+    discs: list[_DiscPlacement] = []
+    z = 0.0
+    for i, lvl in enumerate(reversed(levels)):  # i=0 is most inferior
+        body_z_lo = z
+        body_z_hi = z + spec.body_height_mm
+        placements.append(
+            _LevelPlacement(
+                level=lvl,
+                body_z_lo=body_z_lo,
+                body_z_hi=body_z_hi,
+                y_offset_mm=y_offset_per_level[lvl],
+            )
+        )
+        z = body_z_hi
+        # The disc above this body connects this level to the next one up.
+        # Skip after the last (most superior) body.
+        if i < len(levels) - 1:
+            superior_lvl = levels[len(levels) - 2 - i]
+            pair = f"{superior_lvl}-{lvl}"
+            h = disc_height_per_pair[pair]
+            discs.append(
+                _DiscPlacement(
+                    pair=pair,
+                    z_lo=z,
+                    z_hi=z + h,
+                    # Disc Y offset interpolates between the two bodies it
+                    # connects so it doesn't hang in space if one slipped.
+                    y_offset_mm=0.5
+                    * (
+                        y_offset_per_level[lvl]
+                        + y_offset_per_level[superior_lvl]
+                    ),
+                )
+            )
+            z += h
+
+    return placements, discs, z  # z at this point == column height
+
+
+def _scoliosis_apex_z(
+    placements: list[_LevelPlacement],
+    apex_level: str | None,
+) -> float | None:
+    if apex_level is None:
+        return None
+    for p in placements:
+        if p.level == apex_level:
+            return 0.5 * (p.body_z_lo + p.body_z_hi)
+    return None
+
+
 def generate(spec: PhantomSpec) -> PhantomVolume:
     """Build a labelled uint8 volume from a `PhantomSpec`.
 
-    The volume is sized to fit a skin envelope around `spec.levels` with a
-    small margin, so volume bounds change with input rather than being
-    fixed. Determinism comes from spec values + `spec.seed`.
+    Determinism: spec values + `spec.seed` fully determine the output. Two
+    runs with the same spec produce byte-identical volumes (and therefore
+    byte-identical glTF after the deterministic mesh stages).
     """
 
     rng = np.random.default_rng(spec.seed)
+    patho = spec.pathology
 
-    n_levels = len(spec.levels)
-    column_height_mm = (
-        n_levels * spec.body_height_mm + (n_levels - 1) * spec.disc_height_mm
-    )
+    placements, discs, column_height_mm = _resolve_offsets(spec)
+    apex_z = _scoliosis_apex_z(placements, patho.scoliosis_apex_level)
 
     margin_mm = 30.0
     extent_x_mm = 2 * (spec.skin_radius_lat_mm + margin_mm)
@@ -89,8 +209,6 @@ def generate(spec: PhantomSpec) -> PhantomVolume:
     ny = int(math.ceil(extent_y_mm / sp))
     nz = int(math.ceil(extent_z_mm / sp))
 
-    # Voxel -> patient mm affine. Origin is placed so the column starts
-    # at z=0 in patient coords, AP/lateral are centred on 0.
     affine = np.eye(4)
     affine[0, 0] = sp
     affine[1, 1] = sp
@@ -99,7 +217,6 @@ def generate(spec: PhantomSpec) -> PhantomVolume:
     affine[1, 3] = -extent_y_mm / 2.0
     affine[2, 3] = -margin_mm
 
-    # Coordinate grids in mm, broadcast to (Z, Y, X).
     z_coords = (np.arange(nz, dtype=np.float32) + 0.5) * sp + affine[2, 3]
     y_coords = (np.arange(ny, dtype=np.float32) + 0.5) * sp + affine[1, 3]
     x_coords = (np.arange(nx, dtype=np.float32) + 0.5) * sp + affine[0, 3]
@@ -107,75 +224,99 @@ def generate(spec: PhantomSpec) -> PhantomVolume:
 
     voxels = np.zeros((nz, ny, nx), dtype=np.uint8)
 
-    # Skin: ellipsoid around the column axis. AP smaller than lateral to
-    # roughly approximate a torso cross-section.
+    # Skin envelope. Doesn't currently follow scoliosis — the abdomen
+    # ellipsoid stays centred. Future: warp envelope with the curve.
     rx = spec.skin_radius_lat_mm
     ry = spec.skin_radius_ap_mm
     inside_skin = (X / rx) ** 2 + (Y / ry) ** 2 <= 1.0
     inside_z = (Z >= 0) & (Z <= column_height_mm)
     voxels[inside_skin & inside_z] = LABEL_SOFT_TISSUE
 
-    # Skin shell: outer ring of the ellipsoid, ~3 mm thick.
     skin_thickness = 3.0
     inside_skin_inner = (
         (X / (rx - skin_thickness)) ** 2 + (Y / (ry - skin_thickness)) ** 2 <= 1.0
     )
     voxels[inside_skin & ~inside_skin_inner & inside_z] = LABEL_SKIN
 
-    # Lordotic curve. We tilt the column in the sagittal plane so anterior
-    # is convex. Apex of curvature near L3-L4. Approximate as a quadratic
-    # offset along Y as a function of Z.
-    apex_z = column_height_mm * 0.45
-    max_offset = math.tan(math.radians(spec.lordosis_deg) / 2.0) * column_height_mm * 0.25
-    sag_offset = max_offset * (1.0 - ((Z - apex_z) / (column_height_mm / 2.0)) ** 2)
-    sag_offset = np.clip(sag_offset, 0.0, max_offset)
+    # Lordosis: smooth Y offset peaking near the middle of the column.
+    lordosis_apex_z = column_height_mm * 0.45
+    lord_max = (
+        math.tan(math.radians(spec.lordosis_deg) / 2.0) * column_height_mm * 0.25
+    )
+    sag_offset = lord_max * (
+        1.0 - ((Z - lordosis_apex_z) / (column_height_mm / 2.0)) ** 2
+    )
+    sag_offset = np.clip(sag_offset, 0.0, lord_max)
 
-    # Vertebral bodies + discs alternating along Z. Bodies take precedence
-    # over disc voxels at boundaries.
-    z0 = 0.0
+    # Scoliosis: smooth X offset peaking at apex_z, sign from cobb_deg.
+    if apex_z is not None and patho.scoliosis_cobb_deg != 0.0:
+        scol_max = (
+            math.tan(math.radians(abs(patho.scoliosis_cobb_deg)) / 2.0)
+            * column_height_mm
+            * 0.25
+        )
+        scol_sign = 1.0 if patho.scoliosis_cobb_deg > 0 else -1.0
+        scoliosis_offset = (
+            scol_sign
+            * scol_max
+            * np.maximum(
+                0.0,
+                1.0 - ((Z - apex_z) / (column_height_mm / 2.0)) ** 2,
+            )
+        )
+    else:
+        scoliosis_offset = np.zeros_like(Z)
+
     body_radius = spec.body_radius_mm
-    disc_radius = body_radius * 0.95  # discs slightly smaller than bodies
-    for i, _level in enumerate(spec.levels):
-        body_z_start = z0
-        body_z_end = body_z_start + spec.body_height_mm
-        disc_z_start = body_z_end
-        disc_z_end = disc_z_start + spec.disc_height_mm
+    disc_radius = body_radius * 0.95
 
-        in_body_z = (Z >= body_z_start) & (Z < body_z_end)
-        in_disc_z = (Z >= disc_z_start) & (Z < disc_z_end)
+    # Bodies
+    for p in placements:
+        in_z = (Z >= p.body_z_lo) & (Z < p.body_z_hi)
+        radial = (
+            (X - scoliosis_offset) ** 2
+            + (Y - sag_offset - p.y_offset_mm) ** 2
+        ) ** 0.5
+        voxels[in_z & (radial <= body_radius)] = LABEL_VERTEBRAL_BODY
 
-        radial = ((X) ** 2 + (Y - sag_offset) ** 2) ** 0.5
-        in_body_radial = radial <= body_radius
-        in_disc_radial = radial <= disc_radius
+    # Discs (after bodies so a body never overwrites a disc, but degenerated
+    # discs that sit inside body z-range are already prevented by
+    # _resolve_offsets stacking them between body extents).
+    for d in discs:
+        in_z = (Z >= d.z_lo) & (Z < d.z_hi)
+        radial = (
+            (X - scoliosis_offset) ** 2
+            + (Y - sag_offset - d.y_offset_mm) ** 2
+        ) ** 0.5
+        voxels[in_z & (radial <= disc_radius)] = LABEL_DISC
 
-        voxels[in_body_z & in_body_radial] = LABEL_VERTEBRAL_BODY
-        if i < len(spec.levels) - 1:
-            voxels[in_disc_z & in_disc_radial] = LABEL_DISC
+    # Cord + dura. Only emit cord through the most superior vertebra and
+    # the disc immediately below it — that's roughly L1 + L1-L2 disc when
+    # spec.levels starts at L1. Conus medullaris is at L1-L2 in real anatomy.
+    if placements:
+        top = placements[-1]  # most superior after reversed iteration
+        cord_lower_z = top.body_z_lo - (
+            discs[-1].z_hi - discs[-1].z_lo if discs else 0.0
+        )
+        cord_z = (Z >= cord_lower_z) & (Z <= column_height_mm)
 
-        z0 = disc_z_end
-
-    # Spinal cord + dura, posterior to the bodies. The cord runs through
-    # the canal which sits ~12 mm posterior to body centre.
-    canal_offset_y = -12.0
-    cord_radial = ((X) ** 2 + (Y - sag_offset - canal_offset_y) ** 2) ** 0.5
-    dura_thickness = 2.0
-    in_dura = cord_radial <= (spec.cord_radius_mm + dura_thickness)
-    in_cord = cord_radial <= spec.cord_radius_mm
-
-    # Cord runs through the canal but stops at L1-L2 in real anatomy
-    # (conus medullaris). We're not modelling cauda equina yet, so cord
-    # extends through the upper third of the column only.
-    cord_z = (Z >= column_height_mm * 0.6) & (Z <= column_height_mm)
-    voxels[in_dura & cord_z] = LABEL_DURA
-    voxels[in_cord & cord_z] = LABEL_CORD
+        canal_offset_y = -12.0
+        cord_radial = (
+            (X - scoliosis_offset) ** 2
+            + (Y - sag_offset - canal_offset_y) ** 2
+        ) ** 0.5
+        dura_thickness = 2.0
+        in_dura = cord_radial <= (spec.cord_radius_mm + dura_thickness)
+        in_cord = cord_radial <= spec.cord_radius_mm
+        voxels[in_dura & cord_z] = LABEL_DURA
+        voxels[in_cord & cord_z] = LABEL_CORD
 
     # Tiny stochastic noise to break perfect symmetry in marching cubes
-    # output. Keeps mesh topology robust to numerical edge cases without
-    # changing visible geometry.
+    # output. No-op when seed=0 so the default case stays deterministic
+    # at the byte level.
     if spec.seed != 0:
         jitter = rng.integers(0, 2, size=voxels.shape, dtype=np.uint8)
         edge = (voxels > 0) & (jitter == 1)
-        # Only jitter inside soft tissue, never bone/cord.
         voxels[edge & (voxels == LABEL_SOFT_TISSUE)] = LABEL_SOFT_TISSUE
 
     return PhantomVolume(voxels=voxels, affine=affine, spacing_mm=sp)
