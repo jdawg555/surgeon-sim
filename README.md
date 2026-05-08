@@ -68,10 +68,17 @@ surgeon-sim/
 | `core/catalog.py` | `Resources/implant_catalog.json` (regenerate via `tools/port_catalog.py`) |
 | `fitting/fit_engine.py` | `Fitting/FitEngine.cs` — same 0.40 / 0.35 / 0.25 weights |
 
-`python/core/` (pedicle screw + rod predictor, tray optimizer, plan
-generator) covers the fusion-procedure side and has not been ported to
-C# yet — Quest visualization can call out to a Python service or wait for
-a port, depending on demo scope.
+| Python (`python/core/`)  | C# (`unity/Assets/Scripts/`) |
+|---|---|
+| `implant_predictor.py`   | `Fusion/ImplantPredictor.cs` (pedicle screw + rod sizing, validation) |
+| `tray_optimizer.py`      | `Fusion/TrayOptimizer.cs` (per-case tray reduction) |
+| `plan_generator.py`      | not ported — ReportLab PDF, kept Python-only; Quest builds the in-headset HUD via `Stream/StreamOverlay.cs` |
+
+The fusion-side Domain types live in `Domain/VertebraLevel.cs`,
+`Domain/ImplantPlan.cs`, `Domain/LandmarkSet.cs`, and
+`Domain/TrayConfiguration.cs`. Run the editor smoke test at
+**Tools > Dragonfly > Run Fusion Predictor Smoke Test** to exercise the
+fusion port without launching XR.
 
 ## Getting it running
 
