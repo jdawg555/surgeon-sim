@@ -1,0 +1,24 @@
+{
+  "case_id": "scoliosis-l3-apex",
+  "description": "Adult degenerative lumbar scoliosis, ~25 deg right-convex Cobb angle apexing at L3.",
+  "phantom": {
+    "levels": ["L1", "L2", "L3", "L4", "L5", "S1"],
+    "lordosis_deg": 38.0,
+    "body_radius_mm": 22.0,
+    "body_height_mm": 28.0,
+    "disc_height_mm": 9.0,
+    "cord_radius_mm": 6.0,
+    "skin_radius_ap_mm": 110.0,
+    "skin_radius_lat_mm": 145.0,
+    "voxel_size_mm": 1.0,
+    "seed": 0,
+    "pathology": {
+      "scoliosis_cobb_deg": 25.0,
+      "scoliosis_apex_level": "L3",
+      "degenerative_disc": {
+        "L2-L3": 0.4,
+        "L3-L4": 0.4
+      }
+    }
+  }
+}

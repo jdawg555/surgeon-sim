@@ -21,12 +21,72 @@ from typing import Any
 LUMBAR_LEVELS: tuple[str, ...] = ("L1", "L2", "L3", "L4", "L5", "S1")
 
 
+def _disc_pair_keys(levels: tuple[str, ...]) -> tuple[str, ...]:
+    """Adjacent-pair labels for inter-vertebral discs in `levels` order, e.g.
+    ('L1-L2', 'L2-L3', ..., 'L5-S1'). Convention is `<above>-<below>`."""
+
+    return tuple(f"{a}-{b}" for a, b in zip(levels, levels[1:]))
+
+
+@dataclass(frozen=True)
+class Pathology:
+    """Optional pathology layered on top of the baseline phantom anatomy.
+
+    Each pathology is an additive perturbation: omit a field and the
+    baseline anatomy is unchanged. Multiple pathologies can stack on one
+    case (e.g. degenerative disc + scoliosis is realistic).
+
+    Severity scales (rule of thumb, not clinical thresholds):
+      - degenerative_disc[level_pair]: 0.0 healthy ... 1.0 fully collapsed
+      - spondylolisthesis[level_pair]: anterior translation in mm
+      - scoliosis_cobb_deg: Cobb angle of lateral curvature, 0 = straight
+    """
+
+    degenerative_disc: dict[str, float] = field(default_factory=dict)
+    spondylolisthesis: dict[str, float] = field(default_factory=dict)
+    scoliosis_cobb_deg: float = 0.0
+    scoliosis_apex_level: str | None = None
+
+    def __post_init__(self) -> None:
+        for k, v in self.degenerative_disc.items():
+            if not 0.0 <= v <= 1.0:
+                raise ValueError(
+                    f"degenerative_disc[{k!r}] = {v}; severity must be in [0, 1]"
+                )
+        for k, v in self.spondylolisthesis.items():
+            if not -30.0 <= v <= 30.0:
+                # Clinical Meyerding grade 4 is ~75% body width (~16 mm) so
+                # 30 mm is a generous outer bound; outside that, the pelvic
+                # geometry stops making sense.
+                raise ValueError(
+                    f"spondylolisthesis[{k!r}] = {v} mm; expected -30..30 mm"
+                )
+        if not -60.0 <= self.scoliosis_cobb_deg <= 60.0:
+            raise ValueError(
+                f"scoliosis_cobb_deg = {self.scoliosis_cobb_deg}; "
+                "expected -60..60 deg"
+            )
+        if self.scoliosis_cobb_deg != 0.0 and self.scoliosis_apex_level is None:
+            raise ValueError(
+                "scoliosis_cobb_deg is non-zero but scoliosis_apex_level is "
+                "not set; specify which vertebra the curve apexes on"
+            )
+
+    def is_healthy(self) -> bool:
+        return (
+            not self.degenerative_disc
+            and not self.spondylolisthesis
+            and self.scoliosis_cobb_deg == 0.0
+        )
+
+
 @dataclass(frozen=True)
 class PhantomSpec:
     """Parametric inputs for the synthetic phantom volume.
 
     All measurements in millimetres / degrees. Defaults are literature-mean
     adult lumbar values; varying these is how we generate case variety.
+    `pathology` layers optional perturbations on top of the baseline.
     """
 
     levels: tuple[str, ...] = LUMBAR_LEVELS
@@ -39,6 +99,7 @@ class PhantomSpec:
     skin_radius_lat_mm: float = 145.0
     voxel_size_mm: float = 1.0
     seed: int = 0
+    pathology: Pathology = field(default_factory=Pathology)
 
     def __post_init__(self) -> None:
         for lv in self.levels:
@@ -49,6 +110,30 @@ class PhantomSpec:
                 )
         if self.voxel_size_mm <= 0:
             raise ValueError("voxel_size_mm must be positive")
+
+        valid_pairs = set(_disc_pair_keys(self.levels))
+        for k in self.pathology.degenerative_disc:
+            if k not in valid_pairs:
+                raise ValueError(
+                    f"degenerative_disc references {k!r} which is not an "
+                    f"adjacent pair in levels={self.levels}; "
+                    f"valid pairs: {sorted(valid_pairs)}"
+                )
+        for k in self.pathology.spondylolisthesis:
+            if k not in valid_pairs:
+                raise ValueError(
+                    f"spondylolisthesis references {k!r} which is not an "
+                    f"adjacent pair in levels={self.levels}; "
+                    f"valid pairs: {sorted(valid_pairs)}"
+                )
+        if (
+            self.pathology.scoliosis_apex_level is not None
+            and self.pathology.scoliosis_apex_level not in self.levels
+        ):
+            raise ValueError(
+                f"scoliosis_apex_level {self.pathology.scoliosis_apex_level!r} "
+                f"is not in levels={self.levels}"
+            )
 
 
 @dataclass(frozen=True)
@@ -72,6 +157,8 @@ class CaseSpec:
         phantom_data = dict(data.get("phantom", {}))
         if "levels" in phantom_data:
             phantom_data["levels"] = tuple(phantom_data["levels"])
+        if "pathology" in phantom_data:
+            phantom_data["pathology"] = Pathology(**phantom_data["pathology"])
         return cls(
             case_id=data["case_id"],
             description=data.get("description", ""),
