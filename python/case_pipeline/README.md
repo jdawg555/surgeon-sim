@@ -21,9 +21,25 @@ export.write_*       one .glb per structure + manifest.json
    ▼
 <out_dir>/
   manifest.json
-  meshes/{skin,soft_tissue,vertebral_body,disc,dura,spinal_cord}.glb
+  meshes/skin.glb
+  meshes/soft_tissue.glb
+  meshes/disc.glb
+  meshes/dura.glb
+  meshes/spinal_cord.glb
+  meshes/vertebra_L1.glb
+  meshes/vertebra_L2.glb
+  meshes/vertebra_L3.glb
+  meshes/vertebra_L4.glb
+  meshes/vertebra_L5.glb
+  meshes/vertebra_S1.glb
   spec.json
 ```
+
+Per-vertebra meshes (one .glb per level rather than a single merged
+bone mesh) so the surgeon can highlight or select an individual
+vertebra in Unity for screw planning. All vertebra structures share
+the same `bone` material_hint, so the Unity loader applies one bone
+material across them.
 
 ## Usage
 
@@ -98,9 +114,12 @@ cd python
 python -m case_pipeline.smoke_test
 ```
 
-Builds the literature-default lumbar phantom into a tempdir, asserts all
-six structures were produced with sane triangle counts, and asserts the
-build is deterministic across two runs.
+Builds the literature-default lumbar phantom plus three pathology
+variants into tempdirs, asserts the expected per-level vertebra
+structures plus the soft-tissue structures are all produced with sane
+triangle counts, and asserts pathology cases diverge from baseline.
+Total per case: ~32k triangles across 11 structures (5 soft-tissue +
+6 vertebrae).
 
 ## Stream-safety note
 

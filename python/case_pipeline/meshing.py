@@ -20,26 +20,42 @@ from skimage import measure
 from case_pipeline.phantom import LABEL_NAMES, MATERIAL_HINTS, PhantomVolume
 
 
-# Per-label decimation targets. Bone meshes need more triangles than the
-# skin envelope; cord is small. These are upper bounds — final counts will
-# be lower if the source mask is small.
+# Per-structure decimation targets. Bone meshes need more triangles
+# than the skin envelope; cord is small. These are upper bounds — final
+# counts will be lower if the source mask is small.
+#
+# Per-vertebra structures (`vertebra_L1`..`vertebra_S1`) get a
+# per-vertebra budget; total bone budget across all vertebrae stays
+# roughly the same as the previous merged mesh.
 _DECIMATE_TARGETS: dict[str, int] = {
     "skin": 8000,
     "soft_tissue": 12000,
-    "vertebral_body": 6000,
     "disc": 2000,
     "dura": 2000,
     "spinal_cord": 1500,
 }
+_PER_VERTEBRA_TARGET = 1200
 
 _LAPLACIAN_ITERS: dict[str, int] = {
     "skin": 6,
     "soft_tissue": 8,
-    "vertebral_body": 2,
     "disc": 4,
     "dura": 6,
     "spinal_cord": 6,
 }
+_PER_VERTEBRA_LAPLACIAN = 2
+
+
+def _decimate_target(name: str) -> int:
+    if name.startswith("vertebra_"):
+        return _PER_VERTEBRA_TARGET
+    return _DECIMATE_TARGETS.get(name, 4000)
+
+
+def _laplacian_iters(name: str) -> int:
+    if name.startswith("vertebra_"):
+        return _PER_VERTEBRA_LAPLACIAN
+    return _LAPLACIAN_ITERS.get(name, 4)
 
 
 @dataclass(frozen=True)
@@ -103,14 +119,14 @@ def _cleanup(mesh: trimesh.Trimesh, name: str) -> trimesh.Trimesh:
         kept = [c for c in components if c.area >= biggest * 0.01]
         mesh = trimesh.util.concatenate(kept) if kept else mesh
 
-    target = _DECIMATE_TARGETS.get(name, 4000)
+    target = _decimate_target(name)
     if len(mesh.faces) > target:
         # Quest 3 cannot ship 800k-tri meshes; decimation is mandatory, not
         # a nice-to-have. trimesh dispatches to `fast-simplification` (pure
         # C++, MIT) which is declared in case_pipeline/README.md.
         mesh = mesh.simplify_quadric_decimation(face_count=target)
 
-    iters = _LAPLACIAN_ITERS.get(name, 4)
+    iters = _laplacian_iters(name)
     if iters > 0:
         trimesh.smoothing.filter_laplacian(mesh, lamb=0.5, iterations=iters)
 
