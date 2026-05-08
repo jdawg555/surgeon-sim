@@ -6,6 +6,10 @@ is produced and is non-empty, asserts the build is deterministic across
 two runs, and asserts pathology variants actually differ from baseline
 (so a typo in PhantomSpec.pathology can't silently no-op).
 
+Also verifies CT synthesis (HU range sanity check) without requiring
+TotalSegmentator. Runs the TotalSegmentator end-to-end path only if
+TotalSegmentator + nibabel are importable, otherwise reports SKIP.
+
 Run with:
 
     python -m case_pipeline.smoke_test
@@ -19,7 +23,9 @@ import os
 import sys
 import tempfile
 
-from case_pipeline.models import CaseSpec, PhantomSpec, Pathology
+import numpy as np
+
+from case_pipeline.models import CaseSpec, PhantomSpec, Pathology, TotalSegmentatorConfig
 from case_pipeline.pipeline import build_case
 
 
@@ -141,10 +147,93 @@ def main() -> int:
                         return 1
 
             print("OK: determinism + pathology divergence checks passed")
-            return 0
+
+        _check_ct_synthesis()
+
+        _check_totalsegmentator_path()
+
+        return 0
     except AssertionError as e:
         print(f"FAIL: {e}", file=sys.stderr)
         return 1
+
+
+def _check_ct_synthesis() -> None:
+    """Verify CT synthesis produces a HU volume with sane ranges. No TS
+    install required — this only exercises ct_synthesis.py."""
+    from case_pipeline.ct_synthesis import (
+        HU_AIR,
+        HU_BONE_CORTICAL,
+        HU_BONE_TRABECULAR,
+        HU_SOFT_TISSUE,
+        synthesize_ct,
+    )
+
+    ct = synthesize_ct(PhantomSpec(), noise_hu=0.0)
+    if ct.hu.dtype != np.float32:
+        raise AssertionError(f"CT dtype is {ct.hu.dtype}, expected float32")
+    # Air voxels should be at HU_AIR exactly when noise=0.
+    if not np.isclose(ct.hu.min(), HU_AIR):
+        raise AssertionError(
+            f"CT min {ct.hu.min()} != HU_AIR {HU_AIR}; air not present"
+        )
+    # Bone voxels should hit the cortical HU value.
+    if ct.hu.max() < HU_BONE_TRABECULAR:
+        raise AssertionError(
+            f"CT max {ct.hu.max()} below trabecular bone {HU_BONE_TRABECULAR}; "
+            "bone-shell logic may be broken"
+        )
+    if ct.hu.max() < HU_BONE_CORTICAL - 1.0:
+        raise AssertionError(
+            f"CT max {ct.hu.max()} below cortical bone {HU_BONE_CORTICAL}; "
+            "cortical shell may be missing"
+        )
+    # Roughly: a healthy CT histogram has a big mode around soft-tissue HU.
+    soft_band = ((ct.hu > HU_SOFT_TISSUE - 5) & (ct.hu < HU_SOFT_TISSUE + 5)).sum()
+    if soft_band < 10000:
+        raise AssertionError(
+            f"CT soft-tissue band has only {soft_band} voxels; "
+            "phantom envelope may have collapsed"
+        )
+    print(
+        "OK: CT synthesis HU range "
+        f"[{ct.hu.min():.0f} .. {ct.hu.max():.0f}], "
+        f"shape={ct.hu.shape}"
+    )
+
+
+def _check_totalsegmentator_path() -> None:
+    """Run a tiny TotalSegmentator-backed case if TS is installed.
+    Otherwise print SKIP — the phantom path covers everything else and
+    forcing a 2 GB model download in CI is not the right default."""
+    from case_pipeline.segmenters import totalseg
+
+    if not totalseg.is_available():
+        print(
+            "SKIP: TotalSegmentator not installed. "
+            "Install with `pip install TotalSegmentator nibabel scipy` "
+            "to enable the TS-backed path."
+        )
+        return
+
+    spec = CaseSpec(
+        case_id="smoke-ts-default",
+        description="Smoke: TS-backed lumbar.",
+        source="totalsegmentator",
+        phantom=PhantomSpec(),
+        # Fast model — keeps the smoke test under a couple of minutes
+        # on M5 MPS even on first run.
+        totalsegmentator=TotalSegmentatorConfig(fast=True),
+    )
+
+    with tempfile.TemporaryDirectory() as tmp:
+        counts = _build(spec, tmp)
+        # Bone must be present; if TS returns nothing, that's a failure.
+        if counts.get("vertebral_body", 0) < 32:
+            raise AssertionError(
+                f"TS path produced no bone mesh: {counts}"
+            )
+        print(f"OK: TS path produced {sum(counts.values())} total triangles")
 
 
 if __name__ == "__main__":

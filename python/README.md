@@ -20,14 +20,17 @@ python/
 │   └── fitting/
 │       └── fit_engine.py      Deterministic ranker (0.40 / 0.35 / 0.25 weights)
 └── case_pipeline/             Case authoring: spec JSON → labelled volume → glTF + manifest.
-    ├── models.py              CaseSpec / PhantomSpec / CaseManifest
+    ├── models.py              CaseSpec / PhantomSpec / Pathology / TotalSegmentatorConfig
     ├── phantom.py             Parametric synthetic volume (lumbar + soft tissue)
+    ├── ct_synthesis.py        PhantomSpec → HU CT volume (input to TotalSegmentator)
+    ├── segmenters/
+    │   └── totalseg.py        TotalSegmentator wrapper, label remap, gap fill
     ├── meshing.py             Marching cubes per label, decimate, smooth
     ├── export.py              Per-structure .glb + manifest.json writer
-    ├── pipeline.py            Orchestration entry: build_case(spec, out_dir)
+    ├── pipeline.py            build_case(spec) — dispatches on spec.source
     ├── cli.py                 `python -m case_pipeline.cli <spec> <out_dir>`
-    ├── smoke_test.py          End-to-end + determinism check
-    └── specs/                 Example case specs (literature_default.json)
+    ├── smoke_test.py          End-to-end + determinism + CT + (optional) TS check
+    └── specs/                 Example specs incl. pathology + TS-backed
 ```
 
 ## Why two trees
@@ -54,7 +57,8 @@ side stays in sync.
 ## Dependencies
 
 Catalog and fit engine: `numpy` only. Plan generator: `reportlab` for PDF
-output. Implant predictor and tray optimizer: stdlib. Case pipeline:
-`numpy`, `scikit-image`, `trimesh`, `fast-simplification` (see
-[`case_pipeline/README.md`](case_pipeline/README.md)). See each file's
-imports for specifics.
+output. Implant predictor and tray optimizer: stdlib. Case pipeline core:
+`numpy`, `scikit-image`, `trimesh`, `fast-simplification`. Case pipeline
+TS path (optional): `scipy`, `nibabel`, `TotalSegmentator`. See
+[`case_pipeline/README.md`](case_pipeline/README.md) for the split and
+`pip install` lines.
