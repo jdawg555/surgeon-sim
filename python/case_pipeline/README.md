@@ -10,7 +10,15 @@ loads at runtime.
 CaseSpec (JSON)
    │
    ▼
-phantom.generate     parametric labelled volume (uint8, mm-spaced)
+[ source dispatch ]
+   │
+   ├── source: "phantom"           ──>  phantom.generate
+   │                                    parametric labelled volume
+   │
+   └── source: "totalsegmentator"  ──>  ct_synthesis.synthesize_ct
+                                        segmenters.totalseg.segment
+                                        (TS bones + cord; geometric
+                                         skin/disc/dura/soft_tissue)
    │
    ▼
 meshing.extract      marching cubes per label, decimate, smooth
@@ -42,15 +50,36 @@ manifest = build_case(spec, "out/cases/literature_default")
 
 ## Volume sources
 
-This PR ships the parametric phantom only. The phantom is a synthetic
-torso with a lumbar column, discs, dura, and cord. Not anatomically
-faithful in fine detail — the goal is a deterministic, regeneratable
-volume that exercises the same mesh + export stages real segmented data
-will go through.
+Two sources are available; both produce labelled volumes in the same
+taxonomy and feed the same meshing + export stages.
 
-A later PR will add a `segmented_ct` source that runs TotalSegmentator
-over a synthetic CT and feeds its labels into the same downstream stages.
-The output layout doesn't change.
+### `phantom` (default)
+
+Synthetic torso with a lumbar column, discs, dura, and cord. Not
+anatomically faithful in fine detail — the goal is a deterministic,
+regeneratable volume that exercises the full pipeline. No GPU, no
+heavy deps.
+
+### `totalsegmentator`
+
+Synthesises a HU-valued CT volume from the same `PhantomSpec`, runs
+TotalSegmentator's `total` task to label vertebrae + spinal cord,
+remaps to our taxonomy, and fills the disc / skin / soft-tissue / dura
+gaps with geometric envelopes from the phantom. The downstream meshing
+stages don't care which source produced the labelled volume.
+
+This PR ships the integration architecture. With a *synthetic* CT
+input the segmented bone shapes are still close to the phantom's
+cylinders — the realism win unlocks when a *real* anonymised CT is
+fed in. The same wrapper module just consumes a different NIfTI; the
+spec interface doesn't change.
+
+Required deps: `pip install TotalSegmentator nibabel scipy` (~2 GB of
+model weights download on first run, cached at `~/.totalsegmentator/`).
+The phantom path has no dependency on these — the imports are deferred.
+
+Decisions and rationale: see
+[`docs/research/TOTALSEGMENTATOR.md`](../../docs/research/TOTALSEGMENTATOR.md).
 
 ## Pathology
 
@@ -78,18 +107,25 @@ rendering what we have.
 
 ## Dependencies
 
-`numpy`, `scikit-image` (marching cubes), `trimesh` (cleanup + glTF
-export), `fast-simplification` (quadric decimation backend trimesh
-dispatches to — required, Quest 3 cannot ship the raw 800k-tri marching
-cubes output). Install with:
+**Core (always required):** `numpy`, `scikit-image` (marching cubes),
+`trimesh` (cleanup + glTF export), `fast-simplification` (quadric
+decimation backend — required, Quest 3 cannot ship raw marching cubes
+output).
 
 ```bash
 pip install numpy scikit-image trimesh fast-simplification
 ```
 
-No GPU required for the phantom path. TotalSegmentator (next PR) will
-add a heavy ML dependency; we'll keep it optional so this pipeline still
-runs on machines that only need the phantom.
+**TS path (optional):** `scipy` (binary erosion for cortical shell),
+`nibabel` (NIfTI I/O), `TotalSegmentator` (segmenter itself, ~2 GB of
+weights on first run).
+
+```bash
+pip install scipy nibabel TotalSegmentator
+```
+
+The TS deps are imported lazily so the phantom path keeps working when
+they aren't installed.
 
 ## Smoke test
 
@@ -98,9 +134,12 @@ cd python
 python -m case_pipeline.smoke_test
 ```
 
-Builds the literature-default lumbar phantom into a tempdir, asserts all
-six structures were produced with sane triangle counts, and asserts the
-build is deterministic across two runs.
+Builds the literature-default lumbar phantom plus three pathology
+variants into tempdirs, asserts six structures per case with sane
+triangle counts, asserts determinism across two runs, asserts pathology
+variants diverge from baseline, sanity-checks CT synthesis HU ranges,
+and runs the TotalSegmentator-backed path **only if** TS is installed
+(otherwise prints `SKIP`).
 
 ## Stream-safety note
 

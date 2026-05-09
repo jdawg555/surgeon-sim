@@ -136,18 +136,57 @@ class PhantomSpec:
             )
 
 
+VOLUME_SOURCES: tuple[str, ...] = ("phantom", "totalsegmentator")
+
+
+@dataclass(frozen=True)
+class TotalSegmentatorConfig:
+    """Configuration for the TotalSegmentator-backed volume source.
+
+    Inputs to TotalSegmentator come from CT synthesis (see
+    `case_pipeline.ct_synthesis`) over the same `PhantomSpec` the phantom
+    source uses; this config block tunes the segmenter, not the geometry.
+    """
+
+    fast: bool = False  # 1.5 mm fast model vs 1.0 mm full model
+    device: str = "auto"  # 'cuda' | 'mps' | 'cpu' | 'auto'
+    # Synthetic CT can include realistic Gaussian noise around HU values
+    # so the segmenter doesn't see suspiciously clean inputs. Stddev in HU.
+    ct_noise_hu: float = 12.0
+
+    def __post_init__(self) -> None:
+        if self.device not in ("cuda", "mps", "cpu", "auto"):
+            raise ValueError(
+                f"device {self.device!r}; expected cuda | mps | cpu | auto"
+            )
+        if self.ct_noise_hu < 0:
+            raise ValueError("ct_noise_hu must be non-negative")
+
+
 @dataclass(frozen=True)
 class CaseSpec:
     """Top-level case input. One CaseSpec produces one CaseManifest.
 
-    `case_id` is the slug used for output directory naming. `phantom` is the
-    only volume source supported in this PR; later PRs will add a
-    `segmented_ct` source pointing at a TotalSegmentator output.
+    `case_id` is the slug used for output directory naming. `source`
+    picks which volume source to run: `'phantom'` produces a labelled
+    volume directly, `'totalsegmentator'` synthesises a CT, runs
+    TotalSegmentator on it, and post-processes the segmentation.
+    Both downstream stages (meshing, export) are identical.
     """
 
     case_id: str
     description: str = ""
+    source: str = "phantom"
     phantom: PhantomSpec = field(default_factory=PhantomSpec)
+    totalsegmentator: TotalSegmentatorConfig = field(
+        default_factory=TotalSegmentatorConfig
+    )
+
+    def __post_init__(self) -> None:
+        if self.source not in VOLUME_SOURCES:
+            raise ValueError(
+                f"source {self.source!r}; expected one of {VOLUME_SOURCES}"
+            )
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -159,10 +198,13 @@ class CaseSpec:
             phantom_data["levels"] = tuple(phantom_data["levels"])
         if "pathology" in phantom_data:
             phantom_data["pathology"] = Pathology(**phantom_data["pathology"])
+        ts_data = data.get("totalsegmentator", {})
         return cls(
             case_id=data["case_id"],
             description=data.get("description", ""),
+            source=data.get("source", "phantom"),
             phantom=PhantomSpec(**phantom_data),
+            totalsegmentator=TotalSegmentatorConfig(**ts_data),
         )
 
     @classmethod

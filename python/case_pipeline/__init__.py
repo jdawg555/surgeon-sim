@@ -6,10 +6,11 @@ in git as JSON, not as binary blobs, and CI can rebuild meshes from source.
 
 Two volume sources are supported:
 
-  1. Parametric phantom (this PR). Synthetic, reproducible, no real patient
-     data. Used for development, smoke tests, and stream demos.
-  2. TotalSegmentator over a synthetic CT (next PR). Same downstream meshing
-     and export, just a different volume source.
+  1. Parametric phantom. Synthetic, reproducible, no real patient data.
+     Used for development, smoke tests, and stream demos.
+  2. TotalSegmentator over a synthetic CT. Same downstream meshing and
+     export, just a different volume source. TotalSegmentator is an
+     optional dependency; install with `pip install TotalSegmentator`.
 
 Public surface kept intentionally small.
 """
@@ -20,6 +21,8 @@ from case_pipeline.models import (
     Pathology,
     PhantomSpec,
     StructureManifest,
+    TotalSegmentatorConfig,
+    VOLUME_SOURCES,
 )
 from case_pipeline.pipeline import build_case
 
@@ -29,5 +32,7 @@ __all__ = [
     "Pathology",
     "PhantomSpec",
     "StructureManifest",
+    "TotalSegmentatorConfig",
+    "VOLUME_SOURCES",
     "build_case",
 ]
