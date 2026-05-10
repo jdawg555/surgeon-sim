@@ -69,6 +69,22 @@ unclear licensing. Skip them for anything we plan to demo publicly.
 - Why: medical VR viewer in Unity. Older code, but the scene
   structure for "patient + tools + UI in VR" is worth a read.
 
+### ORBIT-Surgical
+- https://github.com/orbit-surgical/orbit-surgical
+- License: BSD-3-Clause
+- Why: Isaac Sim / Isaac Lab surgical robot simulation, teleoperation,
+  RL, imitation learning, and demonstration workflows. Use as an
+  offline robotics workbench that exports trajectories or policies into
+  Unity-readable data. Do not make Isaac Sim a Quest runtime dependency.
+
+### iMSTK
+- https://gitlab.kitware.com/iMSTK/iMSTK
+- License: Apache-2.0
+- Why: surgical simulation reference code for tissue cutting, needle
+  contact, suturing, haptics, collision, and PBD/FEM-style interactions.
+  The project is sunsetted as of 2025-05-02, so use it as reference or a
+  desktop companion prototype, not as a hard Quest dependency.
+
 ### SOFA Framework
 - https://github.com/sofa-framework/sofa
 - License: LGPL
@@ -83,6 +99,14 @@ unclear licensing. Skip them for anything we plan to demo publicly.
   Alternative to Wit.ai if the HIPAA story matters more than wake-word
   ergonomics — you'd write your own intent parsing on top of raw
   transcription.
+
+### Awesome AI Tools for Game Developers
+- https://github.com/simoninithomas/awesome-ai-tools-for-game-dev
+- License: check each linked tool
+- Why: curated discovery list for AI-assisted game-dev tooling: asset
+  generation, texture generation, speech recognition, voice generation,
+  conversational models, and Unity/Python interop references. Use it for
+  vendor/tool selection, not as source code.
 
 ### SurgeonLife (internal)
 - Already in your repos. Patterns worth borrowing: data-driven

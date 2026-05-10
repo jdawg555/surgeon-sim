@@ -19,18 +19,24 @@ python/
 │   │   └── implant_loader.py  STEP / STL → bounding box + metadata
 │   └── fitting/
 │       └── fit_engine.py      Deterministic ranker (0.40 / 0.35 / 0.25 weights)
-└── case_pipeline/             Case authoring: spec JSON → labelled volume → glTF + manifest.
-    ├── models.py              CaseSpec / PhantomSpec / Pathology / TotalSegmentatorConfig
-    ├── phantom.py             Parametric synthetic volume (lumbar + soft tissue)
-    ├── ct_synthesis.py        PhantomSpec → HU CT volume (input to TotalSegmentator)
-    ├── segmenters/
-    │   └── totalseg.py        TotalSegmentator wrapper, label remap, gap fill
-    ├── meshing.py             Marching cubes per label, decimate, smooth
-    ├── export.py              Per-structure .glb + manifest.json writer
-    ├── pipeline.py            build_case(spec) — dispatches on spec.source
-    ├── cli.py                 `python -m case_pipeline.cli <spec> <out_dir>`
-    ├── smoke_test.py          End-to-end + determinism + CT + (optional) TS check
-    └── specs/                 Example specs incl. pathology + TS-backed
+├── case_pipeline/             Case authoring: spec JSON → labelled volume → glTF + manifest.
+│   ├── models.py              CaseSpec / PhantomSpec / Pathology / TotalSegmentatorConfig
+│   ├── phantom.py             Parametric synthetic volume (lumbar + soft tissue)
+│   ├── ct_synthesis.py        PhantomSpec → HU CT volume (input to TotalSegmentator)
+│   ├── segmenters/
+│   │   └── totalseg.py        TotalSegmentator wrapper, label remap, gap fill
+│   ├── meshing.py             Marching cubes per label, decimate, smooth
+│   ├── export.py              Per-structure .glb + manifest.json writer
+│   ├── pipeline.py            build_case(spec) — dispatches on spec.source
+│   ├── cli.py                 `python -m case_pipeline.cli <spec> <out_dir>`
+│   ├── smoke_test.py          End-to-end + determinism + CT + (optional) TS check
+│   └── specs/                 Example specs incl. pathology + TS-backed
+└── simulation_assets/          Neutral interchange assets from offline simulators.
+    ├── README.md               Usage for trajectory JSON + ORBIT HDF5 export
+    ├── trajectory.py           InstrumentTrajectory / InstrumentPoseSample schema
+    ├── export_demo_trajectory.py
+    ├── orbit_robomimic_hdf5_to_trajectory.py
+    └── smoke_test.py
 ```
 
 ## Why two trees
@@ -42,6 +48,11 @@ taxonomy but otherwise solve different problems.
 
 The Quest 3 sim renders both: TDR fits when the user calls
 `show implant`, fusion plans when running a fusion procedure step.
+
+`simulation_assets/` is the bridge for systems that should not ship inside
+the Quest runtime. ORBIT-Surgical, iMSTK desktop experiments, or scripted
+generators can write instrument trajectory JSON; Unity consumes it through
+`InstrumentTrajectoryReplay`.
 
 ## Regenerating the C# catalog
 
@@ -62,3 +73,6 @@ output. Implant predictor and tray optimizer: stdlib. Case pipeline core:
 TS path (optional): `scipy`, `nibabel`, `TotalSegmentator`. See
 [`case_pipeline/README.md`](case_pipeline/README.md) for the split and
 `pip install` lines.
+
+Simulation asset trajectory JSON uses only the Python standard library.
+ORBIT Robomimic HDF5 conversion additionally requires `h5py`.
