@@ -42,7 +42,8 @@ surgeon-sim/
 ├── python/                   Reference implementation (canonical)
 │   ├── core/                 Pedicle screw + rod prediction, tray + plan
 │   ├── spineoptimizer/       TDR fit engine (mirrored to C#)
-│   └── case_pipeline/        Case authoring: spec JSON -> labelled volume -> glTF + manifest
+│   ├── case_pipeline/        Case authoring: spec JSON -> labelled volume -> glTF + manifest
+│   └── simulation_assets/    Neutral trajectories from offline simulators -> Unity replay
 ├── unity/Assets/
 │   ├── Scripts/
 │   │   ├── Domain/           SpineLevel, ImplantSpec, DiscSpaceMeasurement, FitScore
@@ -52,6 +53,7 @@ surgeon-sim/
 │   │   ├── Voice/            VoiceCommandRouter — keyword grammar
 │   │   ├── Step/             ProcedureStepMachine — linear sequencer
 │   │   ├── Stream/           StreamOverlay — HUD for the Twitch camera
+│   │   ├── Simulation/       InstrumentTrajectoryReplay — offline sim motion playback
 │   │   ├── Editor/           FitEngineSmokeTest editor menu
 │   │   └── DragonflySession  Top-level wire-up MonoBehaviour
 │   ├── Resources/
@@ -101,6 +103,34 @@ downstream meshing + manifest stages don't change.
 
 See [`python/case_pipeline/README.md`](python/case_pipeline/README.md) for
 the pipeline diagram and dependency list.
+
+## Offline simulator trajectories
+
+External simulators stay out of the Quest runtime. ORBIT-Surgical, iMSTK
+desktop experiments, or scripted demos should export neutral instrument
+trajectory JSON via `python/simulation_assets/`. Unity replays that data
+with `Simulation/InstrumentTrajectoryReplay.cs`.
+
+```
+cd python
+PYTHONPATH=. python3 -m simulation_assets.export_demo_trajectory out/demo_needle_lift.json
+PYTHONPATH=. python3 -m simulation_assets.smoke_test
+```
+
+Bundled copy for Unity editor checks lives at
+`unity/Assets/StreamingAssets/trajectories/demo_needle_lift.json` (regenerate with the same module into that path).
+
+Robomimic HDF5 from ORBIT-Surgical / Isaac Lab → trajectory JSON (needs `pip install h5py`):
+
+```
+PYTHONPATH=. python3 -m simulation_assets.orbit_robomimic_hdf5_to_trajectory --hdf5 dataset.hdf5 --list-structure
+```
+
+See [`python/simulation_assets/README.md`](python/simulation_assets/README.md).
+
+In Unity, run **Tools > Dragonfly > Load Instrument Trajectory...** and pick
+the exported JSON, or **Tools > Dragonfly > Load bundled demo trajectory (StreamingAssets)** for the checked-in fixture. The editor test creates a capsule, applies the final pose,
+and logs trajectory id, sample count, and duration.
 
 ## Getting it running
 

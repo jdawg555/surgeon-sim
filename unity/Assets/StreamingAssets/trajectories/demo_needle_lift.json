@@ -1,0 +1,94 @@
+{
+  "trajectory_id": "demo-needle-lift",
+  "instrument_id": "needle_driver",
+  "source": "scripted",
+  "coordinate_frame": "case_mm",
+  "generated_at": "2026-05-10T21:08:36Z",
+  "samples": [
+    {
+      "timestamp_s": 0.0,
+      "position_mm": {
+        "x": -35.0,
+        "y": 95.0,
+        "z": 20.0
+      },
+      "rotation_xyzw": {
+        "x": 0.0,
+        "y": 0.0,
+        "z": 0.0,
+        "w": 1.0
+      },
+      "gripper": 0.0,
+      "contact_state": "free",
+      "annotation": "approach"
+    },
+    {
+      "timestamp_s": 0.75,
+      "position_mm": {
+        "x": -12.0,
+        "y": 82.0,
+        "z": 12.0
+      },
+      "rotation_xyzw": {
+        "x": 0.0,
+        "y": 0.0,
+        "z": 0.0,
+        "w": 1.0
+      },
+      "gripper": 0.35,
+      "contact_state": "near_tissue",
+      "annotation": ""
+    },
+    {
+      "timestamp_s": 1.5,
+      "position_mm": {
+        "x": 0.0,
+        "y": 76.0,
+        "z": 8.0
+      },
+      "rotation_xyzw": {
+        "x": 0.0,
+        "y": 0.0,
+        "z": 0.0,
+        "w": 1.0
+      },
+      "gripper": 1.0,
+      "contact_state": "grasping",
+      "annotation": "needle captured"
+    },
+    {
+      "timestamp_s": 2.25,
+      "position_mm": {
+        "x": 24.0,
+        "y": 108.0,
+        "z": 30.0
+      },
+      "rotation_xyzw": {
+        "x": 0.0,
+        "y": 0.0,
+        "z": 0.0,
+        "w": 1.0
+      },
+      "gripper": 1.0,
+      "contact_state": "lifting",
+      "annotation": ""
+    },
+    {
+      "timestamp_s": 3.0,
+      "position_mm": {
+        "x": 42.0,
+        "y": 124.0,
+        "z": 40.0
+      },
+      "rotation_xyzw": {
+        "x": 0.0,
+        "y": 0.0,
+        "z": 0.0,
+        "w": 1.0
+      },
+      "gripper": 0.15,
+      "contact_state": "released",
+      "annotation": "release"
+    }
+  ]
+}
